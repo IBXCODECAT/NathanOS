@@ -8,7 +8,7 @@ rm -rf *.o krnl nOS/boot/krnl nOS.iso
 # -m32: Compile for 32-bit architecture
 # -fno-stack-protector: Disable stack protection (we don't have a library for it yet)
 echo "Compiling C kernel..."
-gcc -m32 -fno-stack-protector -fno-builtin -c krnl.c -o krnl.o 
+gcc -m32 -march=i386 -fno-stack-protector -fno-builtin -fno-pie -fno-PIC -nostdlib -ffreestanding -c krnl.c -o krnl.o
 
 # 3. Assemble the bootloader
 # -f elf32: Output 32-bit ELF format

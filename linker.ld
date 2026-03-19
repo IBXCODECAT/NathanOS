@@ -1,11 +1,16 @@
+OUTPUT_FORMAT(elf32-i386)
 ENTRY(start)
+
 SECTIONS
 {
-  . = 0x100000;
-  .text : {
-    *(.mboot)    /* Ensure header is at the start */
-    *(.text)
-  }
-  .data : { *(.data) }
-  .bss  : { *(.bss)  }
+    . = 0x100000;
+    .text : {
+        KEEP(*(.mboot))
+        *(.text)
+    }
+    .rodata : { *(.rodata) }
+    .data   : { *(.data) }
+    .bss    : { *(.bss) }
+    
+    /DISCARD/ : { *(.comment) *(.eh_frame) }
 }
