@@ -1,6 +1,6 @@
 #include "idt.h"
 #include "../cpu.h"
-#include "../drivers/vga.h"
+#include "../panic/panic.h"
 
 // ─── IDT storage ────────────────────────────────────────────────────────────
 
@@ -48,7 +48,8 @@ static void* isr_stubs[IDT_ENTRIES] = {
 static void (*irq_handlers[16])(registers_t*) = {0};
 
 void irq_register_handler(uint8_t irq, void (*handler)(registers_t*)) {
-    if (irq < 16) irq_handlers[irq] = handler;
+    if (irq >= 16) panic(PANIC_INVALID_IRQ_NUMBER);
+    irq_handlers[irq] = handler;
 }
 
 // ─── IDT helpers ────────────────────────────────────────────────────────────
@@ -90,8 +91,8 @@ static void pic_remap(void) {
     // 8086 mode
     outb(PIC1_DATA, ICW4_8086);
     outb(PIC2_DATA, ICW4_8086);
-    // Unmask IRQ1 (keyboard); mask everything else
-    outb(PIC1_DATA, 0xFD);
+    // Unmask IRQ0 (timer) and IRQ1 (keyboard); mask everything else
+    outb(PIC1_DATA, 0xFC);
     outb(PIC2_DATA, 0xFF);
 }
 
@@ -108,51 +109,42 @@ void idt_init(void) {
     __asm__ volatile ("lidt %0" : : "m"(idt_ptr));
 }
 
-// ─── Exception handler ──────────────────────────────────────────────────────
+// ─── Exception → panic code mapping ─────────────────────────────────────────
 
-static const char* exception_names[32] = {
-    "Division by Zero",              // 0  #DE
-    "Debug",                         // 1  #DB
-    "Non-Maskable Interrupt",        // 2
-    "Breakpoint",                    // 3  #BP
-    "Overflow",                      // 4  #OF
-    "Bound Range Exceeded",          // 5  #BR
-    "Invalid Opcode",                // 6  #UD
-    "Device Not Available",          // 7  #NM
-    "Double Fault",                  // 8  #DF
-    "Coprocessor Segment Overrun",   // 9
-    "Invalid TSS",                   // 10 #TS
-    "Segment Not Present",           // 11 #NP
-    "Stack-Segment Fault",           // 12 #SS
-    "General Protection Fault",      // 13 #GP
-    "Page Fault",                    // 14 #PF
-    "Reserved",                      // 15
-    "x87 FPU Error",                 // 16 #MF
-    "Alignment Check",               // 17 #AC
-    "Machine Check",                 // 18 #MC
-    "SIMD Floating-Point Exception", // 19 #XM
-    "Virtualization Exception",      // 20 #VE
-    "Control Protection Exception",  // 21 #CP
-    "Reserved",                      // 22
-    "Reserved",                      // 23
-    "Reserved",                      // 24
-    "Reserved",                      // 25
-    "Reserved",                      // 26
-    "Reserved",                      // 27
-    "Hypervisor Injection Exception",// 28 #HV
-    "VMM Communication Exception",   // 29 #VC
-    "Security Exception",            // 30 #SX
-    "Reserved",                      // 31
+static const panic_code_t exception_codes[32] = {
+    PANIC_DIVIDE_BY_ZERO,                 // 0  #DE
+    PANIC_DEBUG_EXCEPTION,                // 1  #DB
+    PANIC_NON_MASKABLE_INTERRUPT,         // 2
+    PANIC_BREAKPOINT_TRAP,                // 3  #BP
+    PANIC_OVERFLOW,                       // 4  #OF
+    PANIC_BOUND_RANGE_EXCEEDED,           // 5  #BR
+    PANIC_INVALID_OPCODE,                 // 6  #UD
+    PANIC_DEVICE_NOT_AVAILABLE,           // 7  #NM
+    PANIC_DOUBLE_FAULT,                   // 8  #DF
+    PANIC_COPROCESSOR_SEGMENT_OVERRUN,    // 9
+    PANIC_INVALID_TSS,                    // 10 #TS
+    PANIC_SEGMENT_NOT_PRESENT,            // 11 #NP
+    PANIC_STACK_SEGMENT_FAULT,            // 12 #SS
+    PANIC_GENERAL_PROTECTION_FAULT,       // 13 #GP
+    PANIC_PAGE_FAULT_IN_NON_PAGED_AREA,   // 14 #PF
+    PANIC_RESERVED_EXCEPTION,             // 15
+    PANIC_X87_FLOATING_POINT_ERROR,       // 16 #MF
+    PANIC_ALIGNMENT_CHECK,                // 17 #AC
+    PANIC_MACHINE_CHECK,                  // 18 #MC
+    PANIC_SIMD_FLOATING_POINT_EXCEPTION,  // 19 #XM
+    PANIC_VIRTUALIZATION_EXCEPTION,       // 20 #VE
+    PANIC_CONTROL_PROTECTION_EXCEPTION,   // 21 #CP
+    PANIC_RESERVED_EXCEPTION,             // 22
+    PANIC_RESERVED_EXCEPTION,             // 23
+    PANIC_RESERVED_EXCEPTION,             // 24
+    PANIC_RESERVED_EXCEPTION,             // 25
+    PANIC_RESERVED_EXCEPTION,             // 26
+    PANIC_RESERVED_EXCEPTION,             // 27
+    PANIC_HYPERVISOR_INJECTION_EXCEPTION, // 28 #HV
+    PANIC_VMM_COMMUNICATION_EXCEPTION,    // 29 #VC
+    PANIC_SECURITY_EXCEPTION,             // 30 #SX
+    PANIC_RESERVED_EXCEPTION,             // 31
 };
-
-// Print a 64-bit value as zero-padded hex (e.g. "0x0000000000401000").
-static void print_hex64(uint64_t val) {
-    vga_puts("0x");
-    for (int shift = 60; shift >= 0; shift -= 4) {
-        uint8_t nibble = (val >> shift) & 0xF;
-        vga_putc(nibble < 10 ? '0' + nibble : 'A' + nibble - 10);
-    }
-}
 
 void isr_handler(registers_t* regs) {
     if (regs->int_num >= 32) {
@@ -164,40 +156,9 @@ void isr_handler(registers_t* regs) {
         return;
     }
 
-    vga_set_color(VGA_COLOR_WHITE, VGA_COLOR_RED);
-    vga_cls();
+    uint64_t fault_addr = 0;
+    if (regs->int_num == 14)
+        __asm__ volatile ("mov %%cr2, %0" : "=r"(fault_addr));
 
-    vga_puts("*** KERNEL EXCEPTION ***\n\n");
-    vga_puts("Exception: ");
-    vga_puts(exception_names[regs->int_num]);
-    vga_puts("\n");
-
-    vga_puts("  INT:    ");
-    print_hex64(regs->int_num);
-    vga_puts("\n");
-
-    vga_puts("  ERR:    ");
-    print_hex64(regs->error_code);
-    vga_puts("\n");
-
-    vga_puts("  RIP:    ");
-    print_hex64(regs->rip);
-    vga_puts("\n");
-
-    vga_puts("  RFLAGS: ");
-    print_hex64(regs->rflags);
-    vga_puts("\n");
-
-    if (regs->int_num == 14) {
-        uint64_t cr2;
-        __asm__ volatile ("mov %%cr2, %0" : "=r"(cr2));
-        vga_puts("  CR2:    ");
-        print_hex64(cr2);
-        vga_puts("  (faulting address)\n");
-    }
-
-    vga_puts("\nSystem halted.");
-
-    cli();
-    while (1) hlt();
+    panic_ex(exception_codes[regs->int_num], regs->rip, regs->error_code, fault_addr);
 }

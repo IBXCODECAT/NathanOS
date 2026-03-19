@@ -1,7 +1,9 @@
 #include "drivers/vga.h"
 #include "drivers/keyboard.h"
+#include "drivers/timer.h"
 #include "idt/idt.h"
 #include "mm/pmm.h"
+#include "panic/panic.h"
 #include "cpu.h"
 
 static void vga_putu64(uint64_t n) {
@@ -27,6 +29,7 @@ void kmain(uint32_t mbi_addr) {
     idt_init();
     vga_puts("IDT: Loaded\n");
 
+    if (!mbi_addr) panic(PANIC_NO_MULTIBOOT_INFO);
     multiboot_info_t* mbi = (multiboot_info_t*)(uint64_t)mbi_addr;
     pmm_init(mbi);
     vga_puts("PMM: Loaded\n");
@@ -39,8 +42,14 @@ void kmain(uint32_t mbi_addr) {
     vga_putu64(pmm_total_pages());
     vga_putc('\n');
 
+    timer_init();
+    vga_puts("Timer: Loaded\n");
+
     keyboard_init();
     vga_puts("Keyboard: Loaded\n\n");
+
+    // TEMPORARY: trigger a page fault to test the panic screen (above the 64MB identity map)
+    //*(volatile int*)0x8000000 = 0;
 
     vga_puts("Type something: ");
     sti();

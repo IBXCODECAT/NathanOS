@@ -34,6 +34,8 @@ void vga_cls(void) {
             VGA_BUFF[index] = vga_entry(' ', term_color);
         }
     }
+    term_row = 0;
+    term_col = 0;
 }
 
 // Logic for moving the hardware blinking cursor
@@ -58,10 +60,19 @@ void vga_putc(char c) {
         }
     }
 
-    // Basic scrolling check
+    // Scroll up one line when the cursor passes the last row
     if (term_row >= VGA_HEIGHT) {
-        // Advanced: move memory up here. For now, just reset.
-        term_row = 0;
+        // Move every row up by one
+        for (size_t y = 1; y < VGA_HEIGHT; y++) {
+            for (size_t x = 0; x < VGA_WIDTH; x++) {
+                VGA_BUFF[(y - 1) * VGA_WIDTH + x] = VGA_BUFF[y * VGA_WIDTH + x];
+            }
+        }
+        // Clear the new bottom row
+        for (size_t x = 0; x < VGA_WIDTH; x++) {
+            VGA_BUFF[(VGA_HEIGHT - 1) * VGA_WIDTH + x] = vga_entry(' ', term_color);
+        }
+        term_row = VGA_HEIGHT - 1;
     }
     update_cursor(term_col, term_row);
 }
