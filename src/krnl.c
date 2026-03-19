@@ -5,15 +5,15 @@
 #include "mm/vmm.h"
 #include "gdt/gdt.h"
 #include "syscall/syscall.h"
+#include "elf/elf.h"
 #include "panic/panic.h"
+#include "cpu.h"
 
-/* Flat binary embedded by objcopy (src/user/user.bin → user_bin.o) */
-extern uint8_t _binary_user_bin_start[];
-extern uint8_t _binary_user_bin_end[];
+/* ELF binary embedded by objcopy (src/user/user.elf → user_elf.o) */
+extern uint8_t _binary_user_elf_start[];
 
-/* Virtual addresses for user code and stack — above the 64MB identity map */
-#define USER_CODE_BASE  0x4000000ULL
-#define USER_STACK_BASE 0x4010000ULL  /* one 4KB page; RSP starts at top */
+/* User stack: one page above the 64MB identity map */
+#define USER_STACK_BASE 0x4010000ULL
 
 static void vga_putu64(uint64_t n) {
     if (n == 0) { vga_putc('0'); return; }
@@ -76,28 +76,15 @@ void kmain(uint32_t mbi_addr) {
     syscall_init();
     vga_puts("Syscall: Loaded\n");
 
-    /* ── Load user binary into ring-3 accessible memory ────────────── */
-    uint64_t bin_size = (uint64_t)(_binary_user_bin_end - _binary_user_bin_start);
-
-    /* Map enough 4KB pages to hold the binary (writable so we can copy in) */
-    uint64_t npages = (bin_size + 0xFFF) >> 12;
-    if (npages == 0) npages = 1;
-    for (uint64_t i = 0; i < npages; i++) {
-        void* pg = pmm_alloc();
-        vmm_map(USER_CODE_BASE + i * 0x1000, (uint64_t)pg, VMM_USER_DATA);
-    }
-
-    /* Copy binary bytes to the mapped virtual address */
-    uint8_t* dst = (uint8_t*)USER_CODE_BASE;
-    for (uint64_t i = 0; i < bin_size; i++)
-        dst[i] = _binary_user_bin_start[i];
+    /* Parse ELF, map segments, get entry point */
+    uint64_t entry = elf_load(_binary_user_elf_start);
+    vga_puts("ELF: Loaded\n");
 
     /* Map one page for the user stack */
     void* stack_pg = pmm_alloc();
     vmm_map(USER_STACK_BASE, (uint64_t)stack_pg, VMM_USER_DATA);
 
-    vga_puts("User: Loaded\n\n");
+    vga_puts("User: Entering ring 3\n\n");
 
-    /* Drop into ring 3 — noreturn; sys_exit will hlt */
-    ring3_enter(USER_CODE_BASE, USER_STACK_BASE + 0x1000);
+    ring3_enter(entry, USER_STACK_BASE + 0x1000);
 }

@@ -44,6 +44,7 @@
     X(VMM_CR3_INVALID)                  \
     X(VMM_UNALIGNED_ADDRESS)            \
     X(VMM_HUGEPAGE_CONFLICT)            \
+    X(ELF_INVALID)                      \
     X(MANUALLY_INITIATED_PANIC)
 
 typedef enum {

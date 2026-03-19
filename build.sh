@@ -2,7 +2,7 @@
 set -e
 
 # 1. Clean up
-rm -rf src/*.o src/drivers/*.o src/idt/*.o src/mm/*.o src/proc/*.o src/gdt/*.o src/syscall/*.o src/user/*.o src/user/*.bin krnl nOS.iso
+rm -rf src/*.o src/drivers/*.o src/idt/*.o src/mm/*.o src/proc/*.o src/gdt/*.o src/syscall/*.o src/elf/*.o src/user/*.o src/user/*.elf krnl nOS.iso
 
 # 2. Assemble the bootloader, ISR stubs, and context-switch routine
 nasm -f elf64 src/boot.asm              -o src/boot.o
@@ -11,10 +11,14 @@ nasm -f elf64 src/proc/switch.asm       -o src/proc/switch.o
 nasm -f elf64 src/gdt/gdt_flush.asm         -o src/gdt/gdt_flush.o
 nasm -f elf64 src/syscall/syscall_entry.asm -o src/syscall/syscall_entry.o
 
-# User-mode binary: assemble to flat binary, then wrap in a linkable .o
-nasm -f bin   src/user/user.asm             -o src/user/user.bin
+# User-mode binary: assemble → ELF64 object → link at 0x8000000 → embed in kernel
+# The intermediate .o goes to /tmp so the kernel linker's find never picks it up.
+nasm -f elf64 src/user/user.asm -o /tmp/nOS_user_stage.o
+ld -m elf_x86_64 --oformat elf64-x86-64 \
+    -Ttext=0x8000000 -e _start \
+    /tmp/nOS_user_stage.o -o src/user/user.elf
 (cd src/user && objcopy -I binary -O elf64-x86-64 -B i386:x86-64 \
-    user.bin user_bin.o)
+    user.elf user_elf.o)
 
 # 3. Compile all C files (including drivers)
 # This loop finds every .c file under src/
