@@ -2,28 +2,27 @@
 set -e
 
 # 1. Clean up
-rm -rf *.o drivers/*.o idt/*.o krnl nOS.iso
+rm -rf src/*.o src/drivers/*.o src/idt/*.o krnl nOS.iso
 
 # 2. Assemble the bootloader and ISR stubs
-nasm -f elf64 boot.asm -o boot.o
-nasm -f elf64 idt/isr.asm -o idt/isr.o
+nasm -f elf64 src/boot.asm -o src/boot.o
+nasm -f elf64 src/idt/isr.asm -o src/idt/isr.o
 
 # 3. Compile all C files (including drivers)
-# This loop finds every .c file in the current dir and subdirs
-for file in $(find . -name "*.c"); do
+# This loop finds every .c file under src/
+for file in $(find src/ -name "*.c"); do
     echo "Compiling $file..."
-    # We use -I. so the compiler can find headers like cpu.h 
-    # when drivers/vga.c tries to #include "../cpu.h"
+    # -Isrc/ so the compiler can find cpu.h, drivers/vga.h, etc.
     gcc -m64 -march=x86-64 -ffreestanding -fno-pie -fno-stack-protector \
-        -mcmodel=kernel -I. -c "$file" -o "${file%.c}.o"
+        -mcmodel=kernel -Isrc/ -c "$file" -o "${file%.c}.o"
 done
 
 # 4. Link everything
 # We explicitly list boot.o first to ensure it's at the start of the binary
 echo "Linking..."
-ld -m elf_x86_64 -T linker.ld -o krnl boot.o $(find . -name "*.o" ! -name "boot.o")
+ld -m elf_x86_64 -T src/linker.ld -o krnl src/boot.o $(find src/ -name "*.o" ! -name "boot.o")
 
-# 5. Create ISO (assuming nOS folder exists)
+# 5. Create ISO
 mkdir -p nOS/boot/grub
 cp krnl nOS/boot/krnl
 grub-mkrescue -o nOS.iso nOS
