@@ -1,14 +1,13 @@
-void kmain(void);
+#include "drivers/vga.h"
 
 void kmain(void) {
-    // 64-bit pointers are now 8 bytes
-    volatile char *video_memory = (volatile char*) 0xB8000;
+    vga_init();
     
-    const char *msg = "Successfully entered 64-bit Long Mode!";
-    for (int i = 0; msg[i] != '\0'; i++) {
-        video_memory[i*2] = msg[i];
-        video_memory[i*2 + 1] = 0x0A; // Bright Green
-    }
-
+    vga_puts("nOS Kernel 1.0\n");
+    vga_puts("------------------\n");
+    vga_puts("VGA Driver: Loaded\n");
+    vga_puts("64-bit Long Mode: Active\n");
+    
+    // Stop the CPU so it doesn't run into random memory
     while(1) { __asm__("hlt"); }
 }

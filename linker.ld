@@ -1,4 +1,4 @@
-OUTPUT_FORMAT(elf64-x86-64) /* Changed from elf32-i386 */
+OUTPUT_FORMAT(elf64-x86-64)
 ENTRY(start)
 
 SECTIONS
@@ -10,7 +10,10 @@ SECTIONS
     }
     .rodata : { *(.rodata) }
     .data   : { *(.data) }
-    .bss    : { *(.bss) }
+    .bss    : { 
+        *(.bss) 
+        . = ALIGN(4096); 
+    }
     
     /DISCARD/ : { *(.comment) *(.eh_frame) }
 }
