@@ -3,6 +3,8 @@
 #include "drivers/timer.h"
 #include "idt/idt.h"
 #include "mm/pmm.h"
+#include "mm/heap.h"
+#include "mm/vmm.h"
 #include "panic/panic.h"
 #include "cpu.h"
 
@@ -41,6 +43,27 @@ void kmain(uint32_t mbi_addr) {
     vga_puts("PMM: Total pages: ");
     vga_putu64(pmm_total_pages());
     vga_putc('\n');
+
+    heap_init();
+    vga_puts("Heap: Loaded (");
+    vga_putu64(heap_free_bytes() / 1024);
+    vga_puts(" KB free)\n");
+
+    vmm_init();
+    vga_puts("VMM: Loaded\n");
+
+    // VMM smoke test: map a fresh PMM page at a new virtual address
+    uint64_t phys = (uint64_t)pmm_alloc();
+    uint64_t virt = 0x4001000;  // above 64MB identity map
+    vmm_map(virt, phys, VMM_KERNEL_DATA);
+
+    volatile uint64_t* p = (volatile uint64_t*)virt;
+    *p = 0xDEADBEEFCAFEBABEULL;
+    if (*p != 0xDEADBEEFCAFEBABEULL) panic(PANIC_MANUALLY_INITIATED_PANIC);
+
+    vmm_unmap(virt);
+    pmm_free((void*)phys);
+    vga_puts("VMM: Smoke test passed\n");
 
     timer_init();
     vga_puts("Timer: Loaded\n");

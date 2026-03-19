@@ -39,6 +39,11 @@
     X(PMM_BITMAP_EXCEEDS_MAPPED_REGION) \
     X(PMM_FREE_OUT_OF_RANGE)            \
     X(PMM_DOUBLE_FREE)                  \
+    X(OUT_OF_MEMORY)                    \
+    X(HEAP_DOUBLE_FREE)                 \
+    X(VMM_CR3_INVALID)                  \
+    X(VMM_UNALIGNED_ADDRESS)            \
+    X(VMM_HUGEPAGE_CONFLICT)            \
     X(MANUALLY_INITIATED_PANIC)
 
 typedef enum {

@@ -29,4 +29,16 @@ static inline void cli(void) {
 static inline void sti(void) {
   __asm__ volatile ("sti");
 }
+
+// Read the CR3 register (physical address of PML4 table)
+static inline uint64_t read_cr3(void) {
+    uint64_t cr3;
+    __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
+    return cr3;
+}
+
+// Invalidate the TLB entry for a virtual address
+static inline void invlpg(uint64_t virt) {
+    __asm__ volatile("invlpg (%0)" :: "r"(virt) : "memory");
+}
 #endif
