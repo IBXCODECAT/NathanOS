@@ -5,6 +5,7 @@
 #include "mm/pmm.h"
 #include "mm/heap.h"
 #include "mm/vmm.h"
+#include "gdt/gdt.h"
 #include "proc/task.h"
 #include "panic/panic.h"
 #include "cpu.h"
@@ -66,6 +67,9 @@ void kmain(uint32_t mbi_addr) {
 
     vmm_init();
     vga_puts("VMM: Loaded\n");
+
+    gdt_init();
+    vga_puts("GDT: Loaded\n");
 
     // VMM smoke test: map a fresh PMM page at a new virtual address
     uint64_t phys = (uint64_t)pmm_alloc();

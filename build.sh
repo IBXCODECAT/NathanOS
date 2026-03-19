@@ -2,12 +2,13 @@
 set -e
 
 # 1. Clean up
-rm -rf src/*.o src/drivers/*.o src/idt/*.o src/mm/*.o src/proc/*.o krnl nOS.iso
+rm -rf src/*.o src/drivers/*.o src/idt/*.o src/mm/*.o src/proc/*.o src/gdt/*.o krnl nOS.iso
 
 # 2. Assemble the bootloader, ISR stubs, and context-switch routine
-nasm -f elf64 src/boot.asm         -o src/boot.o
-nasm -f elf64 src/idt/isr.asm      -o src/idt/isr.o
-nasm -f elf64 src/proc/switch.asm  -o src/proc/switch.o
+nasm -f elf64 src/boot.asm              -o src/boot.o
+nasm -f elf64 src/idt/isr.asm           -o src/idt/isr.o
+nasm -f elf64 src/proc/switch.asm       -o src/proc/switch.o
+nasm -f elf64 src/gdt/gdt_flush.asm     -o src/gdt/gdt_flush.o
 
 # 3. Compile all C files (including drivers)
 # This loop finds every .c file under src/
@@ -26,6 +27,14 @@ ld -m elf_x86_64 -T src/linker.ld -o krnl src/boot.o $(find src/ -name "*.o" ! -
 # 5. Create ISO
 mkdir -p nOS/boot/grub
 cp krnl nOS/boot/krnl
+cat > nOS/boot/grub/grub.cfg << 'EOF'
+set timeout=0
+set default=0
+menuentry "NathanOS" {
+    multiboot /boot/krnl
+    boot
+}
+EOF
 grub-mkrescue -o nOS.iso nOS
 
 echo "Build Complete!"
