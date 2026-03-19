@@ -1,4 +1,4 @@
-OUTPUT_FORMAT(elf32-i386)
+OUTPUT_FORMAT(elf64-x86-64) /* Changed from elf32-i386 */
 ENTRY(start)
 
 SECTIONS

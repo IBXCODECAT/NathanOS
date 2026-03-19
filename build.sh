@@ -8,17 +8,17 @@ rm -rf *.o krnl nOS/boot/krnl nOS.iso
 # -m32: Compile for 32-bit architecture
 # -fno-stack-protector: Disable stack protection (we don't have a library for it yet)
 echo "Compiling C kernel..."
-gcc -m32 -march=i386 -fno-stack-protector -fno-builtin -fno-pie -fno-PIC -nostdlib -ffreestanding -c krnl.c -o krnl.o
+gcc -m64 -march=x86-64 -ffreestanding -fno-pie -fno-stack-protector -mcmodel=kernel -c krnl.c -o krnl.o
 
 # 3. Assemble the bootloader
 # -f elf32: Output 32-bit ELF format
 echo "Assembling bootloader..."
-nasm -f elf32 boot.asm -o boot.o 
+nasm -f elf64 boot.asm -o boot.o
 
 # 4. Link the kernel
 # -T linker.ld: Use your custom linker script 
 echo "Linking..."
-ld -m elf_i386 -T linker.ld -o krnl boot.o krnl.o 
+ld -m elf_x86_64 -T linker.ld -o krnl boot.o krnl.o
 
 # 5. Prepare the ISO structure
 echo "Preparing ISO directory..."
@@ -46,4 +46,4 @@ grub-mkrescue -o nOS.iso nOS
 echo "Cleaning up object files..."
 rm *.o
 
-echo "Done! You can now run: qemu-system-i386 -cdrom nOS.iso"
+echo "Done! You can now run: qemu-system-x86_64 -cdrom nOS.iso"
