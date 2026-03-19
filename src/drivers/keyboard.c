@@ -1,11 +1,16 @@
 #include "keyboard.h"
 #include "timer.h"
-#include "vga.h"
 #include "../idt/idt.h"
 #include "../panic/panic.h"
 #include "../cpu.h"
 
 #define KB_DATA_PORT 0x60
+
+/* Simple power-of-2 ring buffer for typed characters */
+#define KB_BUF_SIZE 256
+static volatile char    kb_buf[KB_BUF_SIZE];
+static volatile uint8_t kb_head = 0;   /* next write index */
+static volatile uint8_t kb_tail = 0;   /* next read  index */
 
 #define SC_ESC         0x01
 #define SC_ESC_REL     0x81
@@ -73,7 +78,21 @@ static void keyboard_handler(registers_t* regs) {
     }
 
     char c = kb_scancode_to_ascii(scancode);
-    if (c) vga_putc(c);
+    if (c) {
+        uint8_t next = (kb_head + 1) & (KB_BUF_SIZE - 1);
+        if (next != kb_tail) {        /* drop if buffer full */
+            kb_buf[kb_head] = c;
+            kb_head = next;
+        }
+    }
+}
+
+/* Returns the next character from the ring buffer, or 0 if empty. */
+char keyboard_getc(void) {
+    if (kb_tail == kb_head) return 0;
+    char c = kb_buf[kb_tail];
+    kb_tail = (kb_tail + 1) & (KB_BUF_SIZE - 1);
+    return c;
 }
 
 void keyboard_init(void) {

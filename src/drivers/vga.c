@@ -51,6 +51,15 @@ void vga_putc(char c) {
     if (c == '\n') {
         term_col = 0;
         term_row++;
+    } else if (c == '\b') {
+        if (term_col > 0) {
+            term_col--;
+        } else if (term_row > 0) {
+            term_row--;
+            term_col = VGA_WIDTH - 1;
+        }
+        update_cursor(term_col, term_row);
+        return;
     } else {
         const size_t index = term_row * VGA_WIDTH + term_col;
         VGA_BUFF[index] = vga_entry(c, term_color);

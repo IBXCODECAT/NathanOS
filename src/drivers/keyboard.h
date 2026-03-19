@@ -8,6 +8,9 @@
 // state (shift, etc.) stays accurate.  Returns 0 for non-printable keys.
 char kb_scancode_to_ascii(uint8_t scancode);
 
+// Returns the next ASCII character from the keyboard ring buffer, or 0 if empty.
+char keyboard_getc(void);
+
 void keyboard_init(void);
 
 #endif

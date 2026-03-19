@@ -1,4 +1,6 @@
 #include "drivers/vga.h"
+#include "drivers/timer.h"
+#include "drivers/keyboard.h"
 #include "idt/idt.h"
 #include "mm/pmm.h"
 #include "mm/heap.h"
@@ -69,6 +71,12 @@ void kmain(uint32_t mbi_addr) {
 
     gdt_init();
     vga_puts("GDT: Loaded\n");
+
+    timer_init();
+    vga_puts("Timer: Loaded\n");
+
+    keyboard_init();
+    vga_puts("Keyboard: Loaded\n");
 
     syscall_init();
     vga_puts("Syscall: Loaded\n");

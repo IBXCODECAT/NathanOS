@@ -1,5 +1,6 @@
 #include "syscall.h"
 #include "../drivers/vga.h"
+#include "../drivers/keyboard.h"
 #include "../mm/vmm.h"
 #include "../cpu.h"
 #include <stdint.h>
@@ -52,6 +53,35 @@ void syscall_set_kernel_stack(uint64_t rsp) {
 
 /* ── syscall implementations ─────────────────────────────────────────── */
 
+static int64_t sys_read(uint64_t fd, uint64_t buf, uint64_t count) {
+    (void)fd;
+    if (count == 0) return 0;
+    char *dst = (char *)buf;
+    uint64_t n = 0;
+
+    sti();   /* re-enable interrupts so the keyboard IRQ can fill the ring buffer */
+    while (n < count) {
+        char c;
+        while ((c = keyboard_getc()) == 0) hlt();   /* sleep until a key arrives */
+
+        if (c == '\b') {
+            if (n > 0) {
+                n--;
+                vga_putc('\b');   /* move cursor back  */
+                vga_putc(' ');    /* blank the cell     */
+                vga_putc('\b');   /* move cursor back again */
+            }
+            continue;
+        }
+
+        dst[n++] = c;
+        vga_putc(c);          /* echo to screen */
+        if (c == '\n') break;
+    }
+    cli();
+    return (int64_t)n;
+}
+
 static int64_t sys_write(uint64_t fd, uint64_t buf, uint64_t len) {
     (void)fd;
     const char *s = (const char *)buf;
@@ -71,6 +101,7 @@ static __attribute__((noreturn)) void sys_exit(uint64_t code) {
 
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
     switch (number) {
+        case SYS_READ:  return (uint64_t)sys_read(arg1, arg2, arg3);
         case SYS_WRITE: return (uint64_t)sys_write(arg1, arg2, arg3);
         case SYS_EXIT:  sys_exit(arg1);
     }
