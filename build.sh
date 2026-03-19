@@ -2,10 +2,11 @@
 set -e
 
 # 1. Clean up
-rm -rf *.o drivers/*.o krnl nOS.iso
+rm -rf *.o drivers/*.o idt/*.o krnl nOS.iso
 
-# 2. Assemble the bootloader
+# 2. Assemble the bootloader and ISR stubs
 nasm -f elf64 boot.asm -o boot.o
+nasm -f elf64 idt/isr.asm -o idt/isr.o
 
 # 3. Compile all C files (including drivers)
 # This loop finds every .c file in the current dir and subdirs
@@ -28,3 +29,8 @@ cp krnl nOS/boot/krnl
 grub-mkrescue -o nOS.iso nOS
 
 echo "Build Complete!"
+
+# 6. Launch the OS
+QEMU_CMD="qemu-system-x86_64 -cdrom nOS.iso"
+echo "Running: $QEMU_CMD"
+$QEMU_CMD

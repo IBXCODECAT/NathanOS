@@ -16,6 +16,10 @@ static inline uint16_t vga_entry(unsigned char uc, uint8_t color) {
     return (uint16_t) uc | (uint16_t) color << 8;
 }
 
+void vga_set_color(uint8_t fg, uint8_t bg) {
+    term_color = (bg << 4) | (fg & 0x0F);
+}
+
 void vga_init(void) {
     term_row = 0;
     term_col = 0;
