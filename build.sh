@@ -2,11 +2,12 @@
 set -e
 
 # 1. Clean up
-rm -rf src/*.o src/drivers/*.o src/idt/*.o src/mm/*.o krnl nOS.iso
+rm -rf src/*.o src/drivers/*.o src/idt/*.o src/mm/*.o src/proc/*.o krnl nOS.iso
 
-# 2. Assemble the bootloader and ISR stubs
-nasm -f elf64 src/boot.asm -o src/boot.o
-nasm -f elf64 src/idt/isr.asm -o src/idt/isr.o
+# 2. Assemble the bootloader, ISR stubs, and context-switch routine
+nasm -f elf64 src/boot.asm         -o src/boot.o
+nasm -f elf64 src/idt/isr.asm      -o src/idt/isr.o
+nasm -f elf64 src/proc/switch.asm  -o src/proc/switch.o
 
 # 3. Compile all C files (including drivers)
 # This loop finds every .c file under src/

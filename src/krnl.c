@@ -5,6 +5,7 @@
 #include "mm/pmm.h"
 #include "mm/heap.h"
 #include "mm/vmm.h"
+#include "proc/task.h"
 #include "panic/panic.h"
 #include "cpu.h"
 
@@ -18,6 +19,20 @@ static void vga_putu64(uint64_t n) {
     }
     for (int j = i - 1; j >= 0; j--)
         vga_putc(buf[j]);
+}
+
+static void task_a(void) {
+    for (;;) {
+        vga_puts("A");
+        for (volatile int i = 0; i < 5000000; i++);
+    }
+}
+
+static void task_b(void) {
+    for (;;) {
+        vga_puts("B");
+        for (volatile int i = 0; i < 5000000; i++);
+    }
 }
 
 void kmain(uint32_t mbi_addr) {
@@ -69,12 +84,14 @@ void kmain(uint32_t mbi_addr) {
     vga_puts("Timer: Loaded\n");
 
     keyboard_init();
-    vga_puts("Keyboard: Loaded\n\n");
+    vga_puts("Keyboard: Loaded\n");
 
-    // TEMPORARY: trigger a page fault to test the panic screen (above the 64MB identity map)
-    //*(volatile int*)0x8000000 = 0;
+    sched_init();
+    task_create(task_a);
+    task_create(task_b);
+    vga_puts("Scheduler: Loaded\n\n");
 
-    vga_puts("Type something: ");
+    vga_puts("Tasks running (A/B interleave, keyboard still works):\n");
     sti();
     for(;;) { hlt(); }
 }

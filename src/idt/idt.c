@@ -149,10 +149,12 @@ static const panic_code_t exception_codes[32] = {
 void isr_handler(registers_t* regs) {
     if (regs->int_num >= 32) {
         uint8_t irq = (uint8_t)(regs->int_num - 32);
-        if (irq_handlers[irq]) irq_handlers[irq](regs);
-        // Send End of Interrupt to PIC(s)
+        // Send EOI before the handler so that if the handler switches tasks
+        // the PIC is unblocked and can deliver the next IRQ after iretq.
+        // Safe here because we are in an interrupt gate (IF=0).
         if (irq >= 8) outb(PIC2_CMD, 0x20);
         outb(PIC1_CMD, 0x20);
+        if (irq_handlers[irq]) irq_handlers[irq](regs);
         return;
     }
 
