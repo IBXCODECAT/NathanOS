@@ -2,7 +2,7 @@
 set -e
 
 # 1. Clean up
-rm -rf src/*.o src/drivers/*.o src/idt/*.o krnl nOS.iso
+rm -rf src/*.o src/drivers/*.o src/idt/*.o src/mm/*.o krnl nOS.iso
 
 # 2. Assemble the bootloader and ISR stubs
 nasm -f elf64 src/boot.asm -o src/boot.o

@@ -4,8 +4,8 @@ BITS 32
 section .mboot
     align 4
     dd 0x1BADB002              ; Magic number
-    dd 0x00000000              ; Flags
-    dd -(0x1BADB002 + 0x00000000) ; Checksum
+    dd 0x00000002              ; Flags (bit 1: provide mem_lower/mem_upper)
+    dd -(0x1BADB002 + 0x00000002) ; Checksum
 
 section .text
 global start
@@ -24,21 +24,18 @@ start:
     or eax, 0b11
     mov [pdpt_table], eax
 
-    ; 3. Link PD -> PT
-    mov eax, pt_table
-    or eax, 0b11
-    mov [pd_table], eax
-
-    ; 4. Map PT entries to 4KiB pages (Identity map first 2MB)
+    ; 3. Map PD entries as 2MB huge pages (identity map first 64MB)
+    ;    Each PD entry covers 2MB; bit 7 (PS) makes it a huge page.
+    ;    64MB gives the PMM bitmap room for ~500 GB of RAM.
     mov ecx, 0
-.map_pt:
-    mov eax, 0x1000            ; 4KiB size
-    mul ecx
-    or eax, 0b11               ; Present + Writable
-    mov [pt_table + ecx * 8], eax
+.map_pd_huge:
+    mov eax, ecx
+    shl eax, 21                ; eax = ecx * 2MB
+    or eax, 0b10000011         ; Present + Writable + PS (2MB huge page)
+    mov [pd_table + ecx * 8], eax
     inc ecx
-    cmp ecx, 512               ; 512 entries = 2MB
-    jne .map_pt
+    cmp ecx, 32                ; 32 entries = 64MB
+    jne .map_pd_huge
 
     ; 5. Enable PAE (Physical Address Extension)
     mov eax, cr4
@@ -74,6 +71,7 @@ long_mode_start:
     mov fs, ax
     mov gs, ax
 
+    mov edi, ebx               ; Pass Multiboot info ptr as first arg (SysV AMD64 ABI)
     call kmain                 ; Jump to your 64-bit C code!
     hlt
 
@@ -93,6 +91,5 @@ align 4096                     ; Page tables MUST be 4KB aligned
 pml4_table: resb 4096
 pdpt_table: resb 4096
 pd_table:   resb 4096
-pt_table:   resb 4096          ; 4th level table for 4KB pages
 stack_bottom: resb 8192
 stack_top:

@@ -10,10 +10,11 @@ SECTIONS
     }
     .rodata : { *(.rodata) }
     .data   : { *(.data) }
-    .bss    : { 
-        *(.bss) 
-        . = ALIGN(4096); 
+    .bss    : {
+        *(.bss)
+        *(COMMON)
     }
-    
+    _kernel_end = .;
+
     /DISCARD/ : { *(.comment) *(.eh_frame) }
 }
