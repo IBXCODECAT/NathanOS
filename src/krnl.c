@@ -1,6 +1,8 @@
 #include "drivers/vga.h"
+#include "drivers/keyboard.h"
 #include "idt/idt.h"
 #include "mm/pmm.h"
+#include "cpu.h"
 
 static void vga_putu64(uint64_t n) {
     if (n == 0) { vga_putc('0'); return; }
@@ -37,5 +39,10 @@ void kmain(uint32_t mbi_addr) {
     vga_putu64(pmm_total_pages());
     vga_putc('\n');
 
-    for(;;) { __asm__("hlt"); }
+    keyboard_init();
+    vga_puts("Keyboard: Loaded\n\n");
+
+    vga_puts("Type something: ");
+    sti();
+    for(;;) { hlt(); }
 }

@@ -34,6 +34,10 @@ typedef struct {
 
 void idt_init(void);
 
+// Register a C handler for hardware IRQ n (0–15).
+// Called automatically when that IRQ fires; EOI is sent by the IDT layer.
+void irq_register_handler(uint8_t irq, void (*handler)(registers_t*));
+
 // Called from isr.asm for every exception/interrupt.
 void isr_handler(registers_t* regs);
 

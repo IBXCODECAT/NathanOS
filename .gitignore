@@ -1,1 +1,21 @@
+# Build artifacts
 *.o
+krnl
+
+# ISO and disk images
+*.iso
+*.img
+
+# QEMU / VM artifacts
+*.log
+*.pid
+
+# Editor artifacts
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS X
+.DS_Store
