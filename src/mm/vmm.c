@@ -18,6 +18,11 @@ static uint64_t* get_or_alloc_table(uint64_t* entry_ptr, uint64_t flags) {
         uint64_t* p = (uint64_t*)page;
         for (int i = 0; i < 512; i++) p[i] = 0;
         *entry_ptr = (uint64_t)page | flags;
+    } else {
+        /* Entry already exists (e.g. set by boot.asm for the identity map).
+           OR in any additional permission bits — crucially VMM_FLAG_USER —
+           so the CPU's page-table walk grants access at every level. */
+        *entry_ptr |= (flags & (VMM_FLAG_USER | VMM_FLAG_WRITABLE));
     }
     return (uint64_t*)(*entry_ptr & PAGE_MASK);
 }
@@ -31,15 +36,19 @@ void vmm_map(uint64_t virt, uint64_t phys, uint64_t flags) {
     if (virt & 0xFFF) panic(PANIC_VMM_UNALIGNED_ADDRESS);
     if (phys & 0xFFF) panic(PANIC_VMM_UNALIGNED_ADDRESS);
 
+    /* Intermediate tables need P+W; also propagate User bit so the CPU
+       permits ring-3 access all the way down the page-table walk. */
+    uint64_t mid_flags = VMM_KERNEL_DATA | (flags & VMM_FLAG_USER);
+
     uint64_t* pml4 = (uint64_t*)(read_cr3() & PAGE_MASK);
 
-    uint64_t* pdpt = get_or_alloc_table(&pml4[PML4_IDX(virt)], VMM_KERNEL_DATA);
-    uint64_t* pd   = get_or_alloc_table(&pdpt[PDPT_IDX(virt)], VMM_KERNEL_DATA);
+    uint64_t* pdpt = get_or_alloc_table(&pml4[PML4_IDX(virt)], mid_flags);
+    uint64_t* pd   = get_or_alloc_table(&pdpt[PDPT_IDX(virt)], mid_flags);
 
     uint64_t* pde = &pd[PD_IDX(virt)];
     if (*pde & VMM_FLAG_PS) panic(PANIC_VMM_HUGEPAGE_CONFLICT);
 
-    uint64_t* pt = get_or_alloc_table(pde, VMM_KERNEL_DATA);
+    uint64_t* pt = get_or_alloc_table(pde, mid_flags);
     pt[PT_IDX(virt)] = phys | flags;
 
     invlpg(virt);

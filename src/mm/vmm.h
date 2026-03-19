@@ -12,6 +12,8 @@
 // Convenience combinations
 #define VMM_KERNEL_DATA  (VMM_FLAG_PRESENT | VMM_FLAG_WRITABLE)
 #define VMM_KERNEL_CODE  (VMM_FLAG_PRESENT)
+#define VMM_USER_DATA    (VMM_FLAG_PRESENT | VMM_FLAG_WRITABLE | VMM_FLAG_USER)
+#define VMM_USER_CODE    (VMM_FLAG_PRESENT | VMM_FLAG_USER)
 
 void     vmm_init(void);
 void     vmm_map(uint64_t virt, uint64_t phys, uint64_t flags);

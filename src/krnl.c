@@ -1,14 +1,19 @@
 #include "drivers/vga.h"
-#include "drivers/keyboard.h"
-#include "drivers/timer.h"
 #include "idt/idt.h"
 #include "mm/pmm.h"
 #include "mm/heap.h"
 #include "mm/vmm.h"
 #include "gdt/gdt.h"
-#include "proc/task.h"
+#include "syscall/syscall.h"
 #include "panic/panic.h"
-#include "cpu.h"
+
+/* Flat binary embedded by objcopy (src/user/user.bin → user_bin.o) */
+extern uint8_t _binary_user_bin_start[];
+extern uint8_t _binary_user_bin_end[];
+
+/* Virtual addresses for user code and stack — above the 64MB identity map */
+#define USER_CODE_BASE  0x4000000ULL
+#define USER_STACK_BASE 0x4010000ULL  /* one 4KB page; RSP starts at top */
 
 static void vga_putu64(uint64_t n) {
     if (n == 0) { vga_putc('0'); return; }
@@ -20,20 +25,6 @@ static void vga_putu64(uint64_t n) {
     }
     for (int j = i - 1; j >= 0; j--)
         vga_putc(buf[j]);
-}
-
-static void task_a(void) {
-    for (;;) {
-        vga_puts("A");
-        for (volatile int i = 0; i < 5000000; i++);
-    }
-}
-
-static void task_b(void) {
-    for (;;) {
-        vga_puts("B");
-        for (volatile int i = 0; i < 5000000; i++);
-    }
 }
 
 void kmain(uint32_t mbi_addr) {
@@ -68,34 +59,45 @@ void kmain(uint32_t mbi_addr) {
     vmm_init();
     vga_puts("VMM: Loaded\n");
 
-    gdt_init();
-    vga_puts("GDT: Loaded\n");
-
-    // VMM smoke test: map a fresh PMM page at a new virtual address
+    // VMM smoke test
     uint64_t phys = (uint64_t)pmm_alloc();
-    uint64_t virt = 0x4001000;  // above 64MB identity map
+    uint64_t virt = 0x4001000;
     vmm_map(virt, phys, VMM_KERNEL_DATA);
-
     volatile uint64_t* p = (volatile uint64_t*)virt;
     *p = 0xDEADBEEFCAFEBABEULL;
     if (*p != 0xDEADBEEFCAFEBABEULL) panic(PANIC_MANUALLY_INITIATED_PANIC);
-
     vmm_unmap(virt);
     pmm_free((void*)phys);
     vga_puts("VMM: Smoke test passed\n");
 
-    timer_init();
-    vga_puts("Timer: Loaded\n");
+    gdt_init();
+    vga_puts("GDT: Loaded\n");
 
-    keyboard_init();
-    vga_puts("Keyboard: Loaded\n");
+    syscall_init();
+    vga_puts("Syscall: Loaded\n");
 
-    sched_init();
-    task_create(task_a);
-    task_create(task_b);
-    vga_puts("Scheduler: Loaded\n\n");
+    /* ── Load user binary into ring-3 accessible memory ────────────── */
+    uint64_t bin_size = (uint64_t)(_binary_user_bin_end - _binary_user_bin_start);
 
-    vga_puts("Tasks running (A/B interleave, keyboard still works):\n");
-    sti();
-    for(;;) { hlt(); }
+    /* Map enough 4KB pages to hold the binary (writable so we can copy in) */
+    uint64_t npages = (bin_size + 0xFFF) >> 12;
+    if (npages == 0) npages = 1;
+    for (uint64_t i = 0; i < npages; i++) {
+        void* pg = pmm_alloc();
+        vmm_map(USER_CODE_BASE + i * 0x1000, (uint64_t)pg, VMM_USER_DATA);
+    }
+
+    /* Copy binary bytes to the mapped virtual address */
+    uint8_t* dst = (uint8_t*)USER_CODE_BASE;
+    for (uint64_t i = 0; i < bin_size; i++)
+        dst[i] = _binary_user_bin_start[i];
+
+    /* Map one page for the user stack */
+    void* stack_pg = pmm_alloc();
+    vmm_map(USER_STACK_BASE, (uint64_t)stack_pg, VMM_USER_DATA);
+
+    vga_puts("User: Loaded\n\n");
+
+    /* Drop into ring 3 — noreturn; sys_exit will hlt */
+    ring3_enter(USER_CODE_BASE, USER_STACK_BASE + 0x1000);
 }

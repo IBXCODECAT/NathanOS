@@ -26,8 +26,8 @@ typedef struct {
     gdt_entry_t null;
     gdt_entry_t kernel_code;
     gdt_entry_t kernel_data;
-    gdt_entry_t user_code;
-    gdt_entry_t user_data;
+    gdt_entry_t user_data;   /* 0x18 — must precede user_code for SYSRET */
+    gdt_entry_t user_code;   /* 0x20 */
     tss_desc_t  tss;
 } __attribute__((packed, aligned(8))) gdt_table_t;
 
@@ -58,8 +58,8 @@ void gdt_init(void) {
     gdt.null        = make_entry(0x00, 0x00);
     gdt.kernel_code = make_entry(0x9A, 0x20);
     gdt.kernel_data = make_entry(0x92, 0x00);
-    gdt.user_code   = make_entry(0xFA, 0x20);
     gdt.user_data   = make_entry(0xF2, 0x00);
+    gdt.user_code   = make_entry(0xFA, 0x20);
 
     uint64_t base  = (uint64_t)&tss;
     uint32_t limit = (uint32_t)(sizeof(tss_t) - 1);
