@@ -20,4 +20,20 @@ void     vmm_map(uint64_t virt, uint64_t phys, uint64_t flags);
 void     vmm_unmap(uint64_t virt);
 uint64_t vmm_get_phys(uint64_t virt);   // returns 0 if not mapped
 
+/*
+ * Address-space management.
+ *
+ * vmm_create_address_space() — allocate a fresh PML4 that contains a
+ *   private copy of the kernel's intermediate page tables.  The identity
+ *   map huge-page entries are duplicated so the kernel remains reachable
+ *   from inside the new space; all non-huge (user) mappings start empty.
+ *   Returns the physical address to load into CR3.
+ *
+ * vmm_switch()       — write a CR3 value (full TLB flush).
+ * vmm_kernel_cr3()   — physical address of the kernel's own PML4.
+ */
+uint64_t vmm_create_address_space(void);
+void     vmm_switch(uint64_t cr3);
+uint64_t vmm_kernel_cr3(void);
+
 #endif

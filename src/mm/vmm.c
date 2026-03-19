@@ -11,6 +11,8 @@
 #define PD_IDX(v)   (((v) >> 21) & 0x1FF)
 #define PT_IDX(v)   (((v) >> 12) & 0x1FF)
 
+static uint64_t kernel_cr3_saved = 0;
+
 static uint64_t* get_or_alloc_table(uint64_t* entry_ptr, uint64_t flags) {
     if (!(*entry_ptr & VMM_FLAG_PRESENT)) {
         void* page = pmm_alloc();
@@ -29,7 +31,44 @@ static uint64_t* get_or_alloc_table(uint64_t* entry_ptr, uint64_t flags) {
 
 void vmm_init(void) {
     if (!read_cr3()) panic(PANIC_VMM_CR3_INVALID);
-    // Boot identity map remains in place; nothing else needed
+    kernel_cr3_saved = read_cr3() & PAGE_MASK;
+}
+
+void vmm_switch(uint64_t cr3) {
+    write_cr3(cr3);
+}
+
+uint64_t vmm_kernel_cr3(void) {
+    return kernel_cr3_saved;
+}
+
+uint64_t vmm_create_address_space(void) {
+    uint64_t* kpml4 = (uint64_t*)kernel_cr3_saved;
+
+    /* Walk the kernel's existing hierarchy to find the identity-map PD */
+    uint64_t* kpdpt = (uint64_t*)(kpml4[0] & PAGE_MASK);
+    uint64_t* kpd   = (uint64_t*)(kpdpt[0] & PAGE_MASK);
+
+    /* Allocate a fresh PML4, PDPT, and PD for this address space */
+    uint64_t* pml4 = (uint64_t*)pmm_alloc();
+    uint64_t* pdpt = (uint64_t*)pmm_alloc();
+    uint64_t* pd   = (uint64_t*)pmm_alloc();
+
+    for (int i = 0; i < 512; i++) { pml4[i] = 0; pdpt[i] = 0; pd[i] = 0; }
+
+    /* Copy only the 2MB huge-page entries that form the identity map.
+       Non-huge entries (user PTs from the kernel space) are deliberately
+       excluded — each process gets a clean slate above the identity map. */
+    for (int i = 0; i < 512; i++)
+        if (kpd[i] & VMM_FLAG_PS)
+            pd[i] = kpd[i];
+
+    /* Wire up the new hierarchy */
+    uint64_t mid = VMM_FLAG_PRESENT | VMM_FLAG_WRITABLE | VMM_FLAG_USER;
+    pdpt[0] = (uint64_t)pd   | mid;
+    pml4[0] = (uint64_t)pdpt | mid;
+
+    return (uint64_t)pml4;
 }
 
 void vmm_map(uint64_t virt, uint64_t phys, uint64_t flags) {

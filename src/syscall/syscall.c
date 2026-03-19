@@ -1,5 +1,7 @@
 #include "syscall.h"
 #include "../drivers/vga.h"
+#include "../mm/vmm.h"
+#include "../cpu.h"
 #include <stdint.h>
 
 #define MSR_EFER          0xC0000080
@@ -37,20 +39,15 @@ static uint64_t rdmsr(uint32_t msr) {
 void syscall_init(void) {
     cpu_local.kernel_rsp = (uint64_t)(syscall_kstack + sizeof(syscall_kstack));
 
-    /* Enable SYSCALL/SYSRET in EFER */
     wrmsr(MSR_EFER, rdmsr(MSR_EFER) | EFER_SCE);
-
-    /*
-     * STAR[47:32] = kernel CS base → SYSCALL sets CS=0x08, SS=0x10
-     * STAR[63:48] = SYSRET base   → SYSRETQ sets CS=(base+16)|3=0x23, SS=(base+8)|3=0x1B
-     */
     wrmsr(MSR_STAR,   (0x0010ULL << 48) | (0x0008ULL << 32));
     wrmsr(MSR_LSTAR,  (uint64_t)syscall_entry);
     wrmsr(MSR_SFMASK, RFLAGS_IF | RFLAGS_DF);
-
-    /* swapgs on syscall entry exchanges GSBASE ↔ KERNELGSBASE;
-       after the swap GS points here so [gs:0] and [gs:8] reach cpu_local */
     wrmsr(MSR_KERNEL_GSBASE, (uint64_t)&cpu_local);
+}
+
+void syscall_set_kernel_stack(uint64_t rsp) {
+    cpu_local.kernel_rsp = rsp;
 }
 
 /* ── syscall implementations ─────────────────────────────────────────── */
@@ -66,10 +63,12 @@ static int64_t sys_write(uint64_t fd, uint64_t buf, uint64_t len) {
 static __attribute__((noreturn)) void sys_exit(uint64_t code) {
     (void)code;
     vga_puts("\n[user exited]\n");
-    for (;;) __asm__ volatile ("hlt");
+    /* Restore the kernel's own address space before halting so we leave
+       the CPU in a clean state (relevant once we support multiple processes) */
+    vmm_switch(vmm_kernel_cr3());
+    for (;;) hlt();
 }
 
-/* Called from syscall_entry.asm with args already remapped to SysV convention */
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
     switch (number) {
         case SYS_WRITE: return (uint64_t)sys_write(arg1, arg2, arg3);

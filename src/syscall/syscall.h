@@ -6,5 +6,6 @@
 #define SYS_EXIT    60
 
 void syscall_init(void);
+void syscall_set_kernel_stack(uint64_t rsp);
 
 #endif

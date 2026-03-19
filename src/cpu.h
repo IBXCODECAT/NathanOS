@@ -37,6 +37,11 @@ static inline uint64_t read_cr3(void) {
     return cr3;
 }
 
+// Write CR3 — loads a new PML4 and fully flushes the TLB
+static inline void write_cr3(uint64_t cr3) {
+    __asm__ volatile("mov %0, %%cr3" :: "r"(cr3) : "memory");
+}
+
 // Invalidate the TLB entry for a virtual address
 static inline void invlpg(uint64_t virt) {
     __asm__ volatile("invlpg (%0)" :: "r"(virt) : "memory");

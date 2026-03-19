@@ -5,15 +5,12 @@
 #include "mm/vmm.h"
 #include "gdt/gdt.h"
 #include "syscall/syscall.h"
-#include "elf/elf.h"
+#include "proc/proc.h"
 #include "panic/panic.h"
 #include "cpu.h"
 
 /* ELF binary embedded by objcopy (src/user/user.elf → user_elf.o) */
 extern uint8_t _binary_user_elf_start[];
-
-/* User stack: one page above the 64MB identity map */
-#define USER_STACK_BASE 0x4010000ULL
 
 static void vga_putu64(uint64_t n) {
     if (n == 0) { vga_putc('0'); return; }
@@ -76,15 +73,8 @@ void kmain(uint32_t mbi_addr) {
     syscall_init();
     vga_puts("Syscall: Loaded\n");
 
-    /* Parse ELF, map segments, get entry point */
-    uint64_t entry = elf_load(_binary_user_elf_start);
-    vga_puts("ELF: Loaded\n");
+    vga_puts("User: Starting process\n\n");
 
-    /* Map one page for the user stack */
-    void* stack_pg = pmm_alloc();
-    vmm_map(USER_STACK_BASE, (uint64_t)stack_pg, VMM_USER_DATA);
-
-    vga_puts("User: Entering ring 3\n\n");
-
-    ring3_enter(entry, USER_STACK_BASE + 0x1000);
+    /* Create isolated address space, load ELF, drop into ring 3 */
+    process_run_elf(_binary_user_elf_start);
 }

@@ -139,24 +139,63 @@ x86-64 virtual addresses are split into five fields:
 5. Indexes `pt[PT_IDX(virt)]` — creates a PT page if not present — and writes `phys | flags`.
 6. Calls `invlpg(virt)` to flush the TLB entry for this address.
 
-`get_or_alloc_table()` is the helper that lazily creates missing table levels: it calls `pmm_alloc()`, zeroes the page, and writes the entry with `VMM_KERNEL_DATA` flags.
+`get_or_alloc_table()` is the helper that lazily creates missing table levels: it calls `pmm_alloc()`, zeroes the page, and writes the entry with `VMM_KERNEL_DATA` flags. When `VMM_FLAG_USER` is needed, it ORs that bit into the existing entry to ensure intermediate levels are always accessible from ring 3.
 
 ### Flags
 
 ```c
 #define VMM_FLAG_PRESENT   (1ULL << 0)
 #define VMM_FLAG_WRITABLE  (1ULL << 1)
-#define VMM_FLAG_USER      (1ULL << 2)   // ring 3 accessible (not yet used)
+#define VMM_FLAG_USER      (1ULL << 2)   // ring-3 accessible
 #define VMM_FLAG_PS        (1ULL << 7)   // huge page (set by boot.asm)
-#define VMM_FLAG_NX        (1ULL << 63)  // no-execute (not yet used)
+#define VMM_FLAG_NX        (1ULL << 63)  // no-execute
 
 #define VMM_KERNEL_DATA  (VMM_FLAG_PRESENT | VMM_FLAG_WRITABLE)
 #define VMM_KERNEL_CODE  (VMM_FLAG_PRESENT)
+#define VMM_USER_DATA    (VMM_FLAG_PRESENT | VMM_FLAG_WRITABLE | VMM_FLAG_USER)
+#define VMM_USER_CODE    (VMM_FLAG_PRESENT | VMM_FLAG_USER)
 ```
+
+`VMM_FLAG_USER` must be set on **all intermediate table entries** (PML4, PDPT, PD) as well as the leaf PT entry for the CPU to allow ring-3 access. `vmm_map` handles this automatically: when `VMM_FLAG_USER` is present in `flags`, it propagates the bit into every level it creates or traverses.
 
 ### `vmm_unmap`
 
 Walks the same 4-level hierarchy and zeroes the PT entry, then calls `invlpg`. Missing levels are silently ignored (the address was never mapped). The intermediate tables (PDPT, PD, PT) are not freed back to the PMM — table reclamation is not implemented.
+
+### Per-Process Address Spaces
+
+Each user process needs its own isolated virtual address space so that processes cannot read or write each other's memory. `vmm_create_address_space()` allocates a fresh PML4 + PDPT + PD for the new process and copies only the **2 MB huge-page entries** (PS bit set) from the kernel's PD:
+
+```c
+uint64_t vmm_create_address_space(void) {
+    // allocate fresh top-level tables
+    uint64_t* pml4 = pmm_alloc();   // zeroed
+    uint64_t* pdpt = pmm_alloc();
+    uint64_t* pd   = pmm_alloc();
+
+    // copy only huge-page entries from the kernel's PD (the identity map)
+    for (int i = 0; i < 512; i++)
+        if (kpd[i] & VMM_FLAG_PS) pd[i] = kpd[i];
+
+    // link tables with user-accessible flags so ring-3 can walk them
+    pdpt[0] = (uint64_t)pd   | PRESENT | WRITABLE | USER;
+    pml4[0] = (uint64_t)pdpt | PRESENT | WRITABLE | USER;
+    return (uint64_t)pml4;
+}
+```
+
+This design gives every process:
+- **The full kernel identity map** (first 64 MB) — so kernel code and data remain reachable after `CR3` is switched.
+- **An empty user PT region** — no user mappings exist yet; they are added by `elf_load` and the stack allocator.
+
+Switching address spaces is a single CR3 write:
+
+```c
+void     vmm_switch(uint64_t cr3);   // load new CR3 (flushes TLB)
+uint64_t vmm_kernel_cr3(void);       // return the kernel's original CR3
+```
+
+`vmm_kernel_cr3()` returns the value saved by `vmm_init()` at boot. `sys_exit` uses it to restore the kernel address space before halting.
 
 ### Smoke Test in `kmain`
 
